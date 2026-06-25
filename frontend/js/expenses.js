@@ -9,7 +9,7 @@ async function saveExpense(){
   state.tx.unshift(expense);
   const msg=`${category} spending logged: ${merchant} ${money(amount)}.`;
   state.feed.unshift(["Now",msg]); await saveFeedToSupabase(msg);
-  saveLocal(); renderApp(); showTab("home"); runNotificationEngine(true); toast("Expense saved",`${merchant} was added.`);
+  saveLocal(); renderApp(); showTab("home"); runNotificationEngine(false); toast("Expense saved",`${merchant} was added.`);
   $("amount").value=""; $("merchant").value="";
 }
 
@@ -392,6 +392,65 @@ function handleReceiptImage(event,mode){
   }).catch(err=>{console.error(err); $("ocrStatus").textContent="OCR failed. Try a clearer image or enter manually."; toast("OCR failed","Try better lighting.");});
 }
 
+
+// ── Simulate OCBC Card Payment (DEMO) ───────────────────────────────────────
+
+function simPickPreset(merchant, category, amount) {
+  $("simMerchant").value = merchant;
+  $("simAmount").value = amount.toFixed(2);
+  const sel = $("simCategory");
+  [...sel.options].forEach(o => { o.selected = o.value === category; });
+}
+
+let _simPaying = false;
+async function simulateCardPayment() {
+  if (_simPaying) return;
+  const amount = Number($("simAmount").value || 0);
+  const merchant = ($("simMerchant").value || "").trim() || "OCBC Merchant";
+  const category = $("simCategory").value;
+  if (!amount) return toast("Missing amount", "Enter an amount to simulate the payment.");
+
+  _simPaying = true;
+  const btn = $("simPayBtn");
+  const label = $("simPayLabel");
+  const success = $("simSuccess");
+
+  btn.disabled = true;
+  btn.style.animation = "simPulse 0.6s ease-in-out 2";
+  label.textContent = "⏳ Processing…";
+  success.classList.add("hidden");
+
+  await new Promise(r => setTimeout(r, 1100));
+
+  const expense = {
+    amount,
+    merchant,
+    category,
+    date: new Date().toISOString().slice(0, 10),
+    source: "ocbc_card",
+    ts: Date.now()
+  };
+  await saveExpenseToSupabase(expense);
+  state.tx.unshift(expense);
+  const msg = `OCBC card payment: ${merchant} ${money(amount)}.`;
+  state.feed.unshift(["Now", msg]);
+  await saveFeedToSupabase(msg);
+  saveLocal();
+  renderApp();
+  runNotificationEngine(false);
+
+  label.textContent = "💳 Tap to Pay";
+  btn.disabled = false;
+  btn.style.animation = "";
+  success.textContent = `✓ Payment of ${money(amount)} at ${merchant} detected`;
+  success.classList.remove("hidden");
+
+  $("simMerchant").value = "";
+  $("simAmount").value = "";
+
+  setTimeout(() => success.classList.add("hidden"), 4000);
+  _simPaying = false;
+}
 
 function guessCategory(lower){
   const groups={"Food & Dining":["starbucks","mcdonald","kfc","subway","kopitiam","koufu","food","cafe","coffee","restaurant","toast","yakun","ya kun","liho","burger","dining"],"Transport":["grab","gojek","comfort","taxi","mrt","bus","transport","ez-link","ezlink","simplygo"],"Shopping":["shopee","lazada","uniqlo","cotton on","zara","shopping","mall","popular"],"Subscriptions":["spotify","netflix","subscription","icloud","youtube","disney","gym"],"Bills":["singtel","starhub","m1","sp services","utilities","bill","electricity","water"]};

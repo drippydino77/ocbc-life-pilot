@@ -25,7 +25,7 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2.5-pro")
-OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "xiaomi/mimo-v2-omni")
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "xiaomi/mimo-v2.5")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 from personality import build_system_prompt
@@ -147,12 +147,7 @@ class LumiAgent:
     # === Graph ===
 
     def _agent_node(self, state: AgentState) -> dict:
-        # Use the vision model if any message in this turn contains image content.
-        has_images = any(
-            isinstance(getattr(m, "content", None), list)
-            for m in state["messages"]
-        )
-        llm = _llm(0.7, vision=has_images).bind_tools(ALL_TOOLS)
+        llm = _llm(0.7).bind_tools(ALL_TOOLS)
         messages = [SystemMessage(content=_build_prompt())] + state["messages"]
         return {"messages": [llm.invoke(messages)]}
 
@@ -168,12 +163,11 @@ class LumiAgent:
     # === Public API (all take the client's context snapshot) ===
 
     async def achat_stream(self, message: str, context: dict, images: list = None):
-        """Stream response events. Yields {"token": str} per token, then optionally
-        {"learned": delta} if Lumi inferred a new preference from the message.
-        The client merges + persists the delta (it owns state).
+        """Stream response events. Yields {"token": str} per token.
 
         images: optional list of base64 data URLs ("data:image/jpeg;base64,...")
-        When present, switches to the vision model and builds a content array.
+        When present, uses the vision model via a direct stream (no tool loop —
+        combining tool-calling + vision is unreliable across providers).
         """
         request_ctx.set_context(context)
         if images:
@@ -182,9 +176,16 @@ class LumiAgent:
                 for url in images
                 if isinstance(url, str) and url.startswith("data:")
             ]
-            human_msg = HumanMessage(content=content)
-        else:
-            human_msg = HumanMessage(content=message)
+            system = SystemMessage(content=_build_prompt())
+            async for chunk in _llm(0.7, vision=True).astream(
+                [system, HumanMessage(content=content)]
+            ):
+                token = getattr(chunk, "content", "")
+                if token:
+                    yield {"token": token}
+            return
+
+        human_msg = HumanMessage(content=message)
         state = {"messages": [human_msg]}
         tool_pending = False
         async for chunk, meta in self.graph.astream(state, stream_mode="messages"):

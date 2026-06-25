@@ -682,7 +682,7 @@ function generateSmartAlerts(){
     alerts.push({icon:"✅",title:"Allowance pace looks safe",body:`${money(tt)} spent${depNote} (${usedPct}% of your ${money(allowance)} allowance). ${totalLeft} free cash left for the next ${dayStr}.`,type:"Cashflow",severity:"low"});
   }
   if(tt>0 && top[1]/tt>=.4){
-    alerts.push({icon:"⌁",title:`${top[0]} is dominating spend`,body:`${top[0]} makes up ${Math.round(top[1]/tt*100)}% of this month's spending — consider rebalancing.`,type:"Category Spike",severity:"medium"});
+    alerts.push({icon:"⌁",title:`${top[0]} is dominating spend`,body:`${top[0]} makes up ${Math.round(top[1]/tt*100)}% of this month's spending — consider cutting back.`,type:"Category Spike",severity:"medium"});
   }
   if(allowance && tt/allowance>=.7){
     alerts.push({icon:"⌛",title:`Goal may drift`,body:`${usedPct}% of allowance used. Cut non-essentials to protect your ${state.profile.goal||"savings"} timeline.`,type:"Goal Drift",severity:"high"});

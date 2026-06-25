@@ -73,7 +73,7 @@ function _lumiClearImage(){
 function _lumiContext(){
   const p = state.profile || {};
   return {
-    profile: { name:p.name, age:p.age, income:p.income, stage:p.stage, risk:p.risk },
+    profile: { name:p.name, age:p.age, income:p.income, monthly_budget:p.income, stage:p.stage, risk:p.risk },
     goals: (state.goals||[]).map(g=>({ id:g.id, name:g.name, target_amount:g.target_amount, current_amount:g.current_amount, deadline:g.deadline||null })),
     transactions: (state.tx||[]).map(t=>({ amount:t.amount, category:t.category, merchant:t.merchant, date:t.date })),
     preferences: state.preferences || {},
@@ -463,6 +463,7 @@ async function _lumiExecuteClientWrite(action){
       if(u.current_amount !== undefined) g.current_amount = u.current_amount;
       if(u.target_amount  !== undefined) g.target_amount  = u.target_amount;
       if(u.name           !== undefined) g.name           = u.name;
+      if(u.deadline       !== undefined) g.deadline       = u.deadline;
       const depositAmt = u.current_amount !== undefined ? Number(u.current_amount) - prevAmount : null;
       if(depositAmt !== null && depositAmt > 0){
         await DB.saveDeposit({ goalId:g.id, goalName:g.name, amount:depositAmt });
@@ -474,6 +475,7 @@ async function _lumiExecuteClientWrite(action){
       if(u.current_amount !== undefined) upd.current_amount = u.current_amount;
       if(u.target_amount  !== undefined) upd.target_amount  = u.target_amount;
       if(u.name           !== undefined) upd.name           = u.name;
+      if(u.deadline       !== undefined) upd.deadline       = u.deadline;
       await DB.updateGoal(g.id, upd);
 
     } else if(action.tool === "deposit_goal"){
@@ -499,6 +501,14 @@ async function _lumiExecuteClientWrite(action){
       await DB.deleteGoal(g.id);
       logEvent("goal_deleted", "🗑️", "var(--muted2)", `Goal deleted: ${g.name}`, `Had ${money(Number(g.current_amount||0))} saved`);
       state.goals = state.goals.filter(x => x.id !== g.id);
+
+    } else if(action.tool === "update_monthly_budget"){
+      const newBudget = parseFloat(p.new_budget);
+      if(!newBudget || newBudget <= 0) throw new Error("new_budget must be a positive number");
+      const old = Number(state.profile.income||0);
+      state.profile.income = newBudget;
+      logEvent("budget_updated", "💳", "var(--purple)", `Monthly budget updated`, `${money(old)} → ${money(newBudget)}`);
+      await syncProfileNow();
 
     } else {
       throw new Error("unknown action: " + action.tool);
