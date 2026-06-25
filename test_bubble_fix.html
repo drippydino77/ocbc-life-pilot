@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lumi Chat Bubble Fix Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    h1 { color: #333; }
+    .info { background: #e8f0fe; padding: 12px; border-radius: 8px; margin: 12px 0; color: #1f2937; font-size: 14px; }
+    #messages {
+      border: 1px solid #ddd;
+      height: 400px;
+      overflow-y: auto;
+      padding: 16px;
+      margin: 20px 0;
+      background: #fafafa;
+      border-radius: 8px;
+    }
+    .bubble {
+      margin: 12px 0;
+      padding: 12px 16px;
+      border-radius: 12px;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+    .lumi-bubble {
+      background: #e8f0fe;
+      color: #1f2937;
+      align-self: flex-start;
+    }
+    .user-bubble {
+      background: #dcf8c6;
+      color: #1f2937;
+      align-self: flex-end;
+      margin-left: auto;
+    }
+    .input-group {
+      display: flex;
+      gap: 8px;
+    }
+    input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      padding: 12px 24px;
+      background: #1f2937;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover { background: #374151; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    .status { font-size: 12px; color: #666; margin-top: 12px; }
+    .success { color: #059669; }
+    .error { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌸 Lumi Chat Bubble Fix Test</h1>
+    <div class="info">
+      <strong>What this test does:</strong><br/>
+      Tests that chat bubbles stay visible when the agent chains tool calls (multiple /chat resets).
+      Previously, each bubble would disappear on reset. Now they remain visible and sequential.
+    </div>
+
+    <div id="messages"></div>
+
+    <div class="input-group">
+      <input id="msg" type="text" placeholder="Try: 'delete all my transactions'" />
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+
+    <div class="status">
+      <div id="status">Ready to chat</div>
+      <div id="bubbleCount" style="margin-top: 8px;"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = "http://localhost:8000";
+    let bubblesCreated = 0;
+    let resetsReceived = 0;
+    let isLoading = false;
+
+    function addBubble(role, text) {
+      const container = document.getElementById("messages");
+      const el = document.createElement("div");
+      el.className = "bubble " + (role === "lumi" ? "lumi-bubble" : "user-bubble");
+      el.textContent = text;
+      container.appendChild(el);
+      container.scrollTop = container.scrollHeight;
+      bubblesCreated++;
+      updateStatus();
+      return el;
+    }
+
+    function updateStatus() {
+      const status = document.getElementById("status");
+      const count = document.getElementById("bubbleCount");
+      status.textContent = isLoading ? "Chatting..." : "Ready to chat";
+      count.innerHTML = `<strong>Session Stats:</strong> Bubbles: ${bubblesCreated}, Resets: ${resetsReceived}`;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("msg");
+      const msg = input.value.trim();
+      if (!msg || isLoading) return;
+
+      isLoading = true;
+      document.getElementById("sendBtn").disabled = true;
+      updateStatus();
+
+      addBubble("user", msg);
+      input.value = "";
+
+      try {
+        // Simulated context with transactions
+        const context = {
+          profile: { name: "Test User", age: 30, income: 5000, stage: "early", risk: "medium" },
+          goals: [],
+          transactions: [
+            { amount: 50, category: "Food", merchant: "McDonalds", date: "2026-06-20" },
+            { amount: 100, category: "Transport", merchant: "Grab", date: "2026-06-21" },
+            { amount: 30, category: "Entertainment", merchant: "Netflix", date: "2026-06-22" }
+          ],
+          preferences: {},
+          history: []
+        };
+
+        const response = await fetch(API + "/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, context })
+        });
+
+        if (!response.ok) throw new Error(`Server error ${response.status}`);
+
+        let fullText = "";
+        let currentBubble = null;
+        let buffer = "";
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let nlIdx;
+
+          while ((nlIdx = buffer.indexOf("\n\n")) !== -1) {
+            const line = buffer.slice(0, nlIdx).trim();
+            buffer = buffer.slice(nlIdx + 2);
+
+            if (!line.startsWith("data:")) continue;
+
+            let payload;
+            try {
+              payload = JSON.parse(line.slice(5).trim());
+            } catch (e) {
+              continue;
+            }
+
+            if (payload.token !== undefined) {
+              fullText += payload.token;
+              if (!currentBubble) {
+                currentBubble = addBubble("lumi", "");
+              }
+              // Show partial text but hide __ACTION__ marker
+              const visibleText = fullText.indexOf("__ACTION__") === -1
+                ? fullText
+                : fullText.slice(0, fullText.indexOf("__ACTION__")).trim();
+              currentBubble.textContent = visibleText;
+              document.getElementById("messages").scrollTop =
+                document.getElementById("messages").scrollHeight;
+            }
+            else if (payload.reset !== undefined) {
+              // THIS IS THE KEY: Reset signal received
+              resetsReceived++;
+              console.log(`✓ RESET #${resetsReceived} - bubble remains visible (NOT removed)`);
+              currentBubble = null;  // Stop updating this bubble, but don't remove it
+              fullText = "";         // Clear for next stream
+            }
+            else if (payload.done) {
+              break;
+            }
+          }
+        }
+
+        document.getElementById("status").innerHTML =
+          `<span class="success">✓ Chat complete!</span> ${resetsReceived} tool calls chained - all bubbles visible.`;
+      } catch (e) {
+        addBubble("lumi", `Error: ${e.message}`);
+        document.getElementById("status").innerHTML =
+          `<span class="error">✗ Error: ${e.message}</span>`;
+      }
+
+      isLoading = false;
+      document.getElementById("sendBtn").disabled = false;
+      updateStatus();
+    }
+
+    // Allow Enter to send
+    document.getElementById("msg").addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !isLoading) sendMessage();
+    });
+
+    // Initialize
+    window.onload = () => {
+      addBubble("lumi", "Hi! I'm Lumi. 🌸\n\nTry asking me to delete transactions to test tool chaining: 'delete all my transactions'");
+      updateStatus();
+    };
+  </script>
+</body>
+</html>
