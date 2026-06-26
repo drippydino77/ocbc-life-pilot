@@ -90,6 +90,7 @@ async function loadFromSupabase(){
   const { data:expenses } = await supabaseClient.from("expenses").select("*").eq("user_id", user.id).order("spent_at", { ascending:false });
   const { data:feeds } = await supabaseClient.from("feed_events").select("*").eq("user_id", user.id).order("created_at", { ascending:false }).limit(30);
   const { data:goalRows } = await supabaseClient.from("goals").select("*").eq("user_id", user.id).order("created_at", { ascending:true });
+  const { data:prefRow } = await supabaseClient.from("preferences").select("*").eq("user_id", user.id).single();
 
   let goals = (goalRows||[]).map(g=>({
     id:g.id, name:g.name, target_amount:Number(g.target_amount||0),
@@ -105,6 +106,13 @@ async function loadFromSupabase(){
     if(migrated) goals = [{id:migrated.id, name:migrated.name, target_amount:Number(migrated.target_amount), current_amount:Number(migrated.current_amount), deadline:migrated.deadline, status:migrated.status}];
   }
 
+  // Reconstruct preferences from the flat Supabase row (life_notes is jsonb, already parsed)
+  let loadedPrefs = {};
+  if(prefRow){
+    const {user_id, updated_at, ...fields} = prefRow;
+    loadedPrefs = fields;
+  }
+
   state = {
     profile: {
       name:profile?.full_name || user.user_metadata?.full_name || user.email,
@@ -118,7 +126,8 @@ async function loadFromSupabase(){
     },
     goals,
     tx:(expenses||[]).map(e=>({ id:e.id, amount:Number(e.amount), category:e.category, merchant:e.merchant, date:(e.spent_at||"").slice(0,10), source:e.source })),
-    feed:(feeds||[]).map(f=>[new Date(f.created_at).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}), f.message])
+    feed:(feeds||[]).map(f=>[new Date(f.created_at).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}), f.message]),
+    preferences: loadedPrefs
   };
   syncPrimaryGoal();
   await DB.loadDeposits(user.id);
@@ -187,7 +196,8 @@ function loadLocalDemo(){
       {amount:54.20,category:"Food & Dining",merchant:"Hawker + Grab",date:daysAgo(12),source:"demo"},
       {amount:130.00,category:"Shopping",merchant:"Uniqlo",date:daysAgo(20),source:"demo"}
     ],
-    feed:[["Now","Demo account loaded. Use Supabase signup/login for real cloud sync."]]
+    feed:[["Now","Demo account loaded. Use Supabase signup/login for real cloud sync."]],
+    preferences: {}
   };
   syncPrimaryGoal();
   saveLocal(); renderApp();

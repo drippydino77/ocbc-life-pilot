@@ -22,6 +22,7 @@
     const stale = newest && ((Date.now() - new Date(newest).getTime()) / 86400000) > 25;
     if(allDemo && stale){ loadLocalDemo(); return; }
 
+    if(!state.preferences) state.preferences = {};  // backfill older caches
     if(state.profile) renderApp();
   }catch(e){} }
 })();

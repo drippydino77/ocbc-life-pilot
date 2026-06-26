@@ -1,12 +1,40 @@
 // Lumi chat widget (SSE streaming + confirm flow)
 
-function _lumiMd(text){
-  // Minimal markdown renderer: bold, italic, inline code, bullet lists
+// Linkify-only for user bubbles — no markdown, just clickable URLs
+function _lumiLinkify(text){
   const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  const inline = s => esc(s)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>");
+  return esc(text).replace(/https?:\/\/[^\s<"]+/g, url => {
+    const display = url.length > 50 ? url.slice(0, 47) + "…" : url;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:underline">${display}</a>`;
+  });
+}
+
+function _lumiMd(text){
+  // Minimal markdown renderer: bold, italic, inline code, links, bullet lists
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const inline = s => {
+    // Extract [text](url) links before escaping so URLs aren't mangled
+    const links = [];
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_, text, url) => {
+      links.push({text, url});
+      return `\x00LINK${links.length - 1}\x00`;
+    });
+    s = esc(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+    // Restore links as clickable anchors
+    s = s.replace(/\x00LINK(\d+)\x00/g, (_, i) => {
+      const {text, url} = links[i];
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:underline">${esc(text)}</a>`;
+    });
+    // Linkify bare URLs not already inside an <a>
+    s = s.replace(/(?<!href=")https?:\/\/[^\s<"]+/g, url => {
+      const display = url.length > 50 ? url.slice(0, 47) + "…" : url;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:underline">${display}</a>`;
+    });
+    return s;
+  };
   const lines = text.split("\n");
   const out = [];
   let inList = false;
@@ -539,7 +567,7 @@ function _lumiAppendBubble(role, text, images){
     }
     inner += `<div class="text"></div>`;
     el.innerHTML = inner;
-    el.querySelector(".text").textContent = text;
+    el.querySelector(".text").innerHTML = _lumiLinkify(text);
   }
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;

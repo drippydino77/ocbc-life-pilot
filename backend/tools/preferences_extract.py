@@ -21,8 +21,9 @@ Fields you may extract:
   risk_attitude (string): one of: conservative, moderate, aggressive — only if clearly stated.
   savings_commitment (string): one of: disciplined, moderate, tends_to_slip — only if they describe their own savings behaviour.
   life_notes (list of strings): short facts with a clear financial implication.
-    Good: "supports parents monthly", "has freelance income", "planning a wedding in 2027"
+    Good: "supports parents monthly", "has freelance income", "planning a wedding in 2027", "getting into trading"
     Bad: "likes coffee", "had a stressful day"
+    NEVER save actionable requests that map to a write operation — e.g. "wants to change budget to X", "wants to delete goal Y", "wants to log a transaction". Those should be handled by the chat action system, not stored as preferences.
     Each under 12 words. Max 2 new notes.
 
 Return ONLY a valid JSON object with the fields you found. Return {{}} if nothing qualifies.

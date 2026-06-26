@@ -261,7 +261,8 @@ function renderInsights(){
   // Use max(day,5) floor so day-1 projections aren't inflated by one big purchase
   const projectedSpend=(tt/Math.max(day,5))*daysInMonth;
   const surplus=allowance-projectedSpend; // positive = under budget, negative = over
-  const dailyTarget=allowance/daysInMonth; // constant target pace for the whole month
+  const spendingAllowance=Math.max(0,allowance-deposits); // allowance minus what's already committed to goals
+  const dailyTarget=spendingAllowance/daysInMonth; // daily target for spending only, goals excluded
 
   // Month-scoped totals — used by health score factor cards (always monthly)
   const cutoff=new Date(); cutoff.setDate(1); const c=cutoff.toISOString().slice(0,10);
